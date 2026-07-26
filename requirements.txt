@@ -1,0 +1,10 @@
+streamlit
+pandas
+plotly
+reportlab
+python-pptx
+matplotlib
+requests
+python-dotenv
+groq
+certifi

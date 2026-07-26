@@ -1,0 +1,21 @@
+# Environment Variables
+.env
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Generated files
+outputs/
+*.pptx
+*.pdf
+
+# Streamlit
+.streamlit/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
