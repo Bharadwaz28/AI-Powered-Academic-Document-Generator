@@ -2,6 +2,10 @@
 
 An AI-powered academic content generation platform that automatically creates professional PowerPoint presentations and PDF reports from a user-provided topic.
 
+## 🌐 Live Demo
+
+🔗 **Launch the App:** https://ai-powered-academic-document-generator.streamlit.app/
+
 ## Features
 
 * AI-generated academic content using Groq LLaMA models
