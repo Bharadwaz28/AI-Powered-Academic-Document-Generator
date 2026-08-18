@@ -349,7 +349,7 @@ def generate_ai_content(topic, number):
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             top_p=0.9,
-            max_tokens=8000
+            max_tokens=5000
         )
 
         content = response.choices[0].message.content
