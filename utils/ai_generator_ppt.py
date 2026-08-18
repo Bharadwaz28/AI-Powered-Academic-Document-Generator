@@ -349,17 +349,15 @@ def generate_ai_content(topic, number):
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             top_p=0.9,
-            max_tokens=5000
+            max_tokens=4500,
+            response_format={"type": "json_object"},
+            reasoning_effort="low",
+            reasoning_format="hidden"
         )
 
         content = response.choices[0].message.content
 
         content = content.strip()
-
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
 
         slides = json.loads(content)
 
