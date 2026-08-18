@@ -37,7 +37,7 @@ def generate_ai_content(topic, sections, category, format_type):
     """
 
     title_response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": title_prompt}],
         temperature=0.6,
         max_tokens=300
