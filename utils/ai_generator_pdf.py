@@ -24,8 +24,7 @@ if not api_key or not api_key.strip():
 
 client = Groq(api_key=api_key.strip())
 
-TITLE_MODEL = "openai/gpt-oss-120b"
-CONTENT_MODEL = "llama-3.1-8b-instant"
+MODEL = "openai/gpt-oss-120b"
 
 print("CHECKPOINT 1 PASSED: Groq client configured.")
 
@@ -105,7 +104,7 @@ Return only the numbered titles.
             )
 
             response = client.chat.completions.create(
-                model=TITLE_MODEL,
+                model=MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=max(300, sections * 80)
@@ -166,7 +165,7 @@ Requirements:
             )
 
             response = client.chat.completions.create(
-                model=CONTENT_MODEL,
+                model=MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=650
@@ -274,7 +273,7 @@ illustrative data for this section.
         )
 
         response = client.chat.completions.create(
-            model=CONTENT_MODEL,
+            model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=180
