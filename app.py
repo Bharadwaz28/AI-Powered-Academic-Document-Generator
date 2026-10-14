@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import random
 
 from utils.pdf_generator import generate_pdf
 from utils.ppt_generator import generate_ppt
@@ -136,11 +137,34 @@ if generate:
                     "pdf"
                 )
 
+            
             if not slides:
                 st.error("Failed to generate content")
                 st.stop()
-
+            
+            # Choose the visual ONCE for each PDF section.
+            # The preview and downloaded PDF will use the same choice.
+            if generation_type == "PDF Report":
+                for slide in slides:
+                    has_chart = bool(slide.get("chart_data"))
+                    has_image = bool(slide.get("image_url"))
+            
+                    available_visuals = []
+            
+                    if has_chart:
+                        available_visuals.append("chart")
+            
+                    if has_image:
+                        available_visuals.append("image")
+            
+                    slide["visual_type"] = (
+                        random.choice(available_visuals)
+                        if available_visuals
+                        else "none"
+                    )
+            
             st.session_state.slides = slides
+
             st.session_state.generated = True
             st.session_state.generated_type = generation_type
             st.session_state.generated_topic = topic
@@ -405,100 +429,74 @@ if slides and st.session_state.get("show_preview", False):
 
                     # ---------------- VISUAL ----------------
 
-                    chart = slide.get("chart_data")
-
+                    
+                    # ---------------- VISUAL: USE THE SAVED SELECTION ----------------
+                    
+                    visual_type = slide.get("visual_type", "image")
+                    
                     left, center, right = st.columns([1.5, 3, 1.5])
-
+                    
                     with center:
-
-                        if chart and chart.get("labels") and chart.get("values"):
-
-                            try:
-
-                                labels = chart["labels"]
-                                values = chart["values"]
-
-                                chart_type = chart.get("type", "bar").lower()
-
-                                df = pd.DataFrame({
-                                    "Category": labels,
-                                    "Value": values
-                                })
-
-                                if chart_type == "line":
-
-                                    fig = px.line(
-                                        df,
-                                        x="Category",
-                                        y="Value"
-                                    )
-
+                    
+                        if visual_type == "chart":
+                            chart = slide.get("chart_data")
+                    
+                            if chart and chart.get("labels") and chart.get("values"):
+                                try:
+                                    df = pd.DataFrame({
+                                        "Category": chart["labels"],
+                                        "Value": chart["values"]
+                                    })
+                    
+                                    chart_type = chart.get("type", "bar").lower()
+                    
+                                    if chart_type == "line":
+                                        fig = px.line(
+                                            df,
+                                            x="Category",
+                                            y="Value"
+                                        )
+                    
+                                    elif chart_type == "pie":
+                                        fig = px.pie(
+                                            df,
+                                            names="Category",
+                                            values="Value"
+                                        )
+                    
+                                    else:
+                                        fig = px.bar(
+                                            df,
+                                            x="Category",
+                                            y="Value"
+                                        )
+                    
                                     fig.update_layout(
                                         height=350,
                                         margin=dict(l=20, r=20, t=20, b=20)
                                     )
-
+                    
                                     st.plotly_chart(
                                         fig,
                                         use_container_width=True
                                     )
-
-                                elif chart_type == "pie":
-
-                                    fig = px.pie(
-                                        df,
-                                        names="Category",
-                                        values="Value"
-                                    )
-
-                                    fig.update_layout(
-                                        height=350,
-                                        margin=dict(l=20, r=20, t=20, b=20)
-                                    )
-
-                                    st.plotly_chart(
-                                        fig,
-                                        use_container_width=True
-                                    )
-
-                                else:
-
-                                    fig = px.bar(
-                                        df,
-                                        x="Category",
-                                        y="Value"
-                                    )
-
-                                    fig.update_layout(
-                                        height=350,
-                                        margin=dict(l=20, r=20, t=20, b=20)
-                                    )
-
-                                    st.plotly_chart(
-                                        fig,
-                                        use_container_width=True
-                                    )
-
-                            except Exception:
-                                st.warning("Chart rendering failed")
-
-                        else:
-
-                            image_url = slide.get("image_url")
-
-                            if (
-                                image_url
-                                and isinstance(image_url, str)
-                                and image_url.startswith("http")
-                            ):
-
-                                st.image(
-                                    image_url,
-                                    width=550
-                                )
-
+                    
+                                except Exception as e:
+                                    st.warning(f"Chart preview failed: {e}")
                             else:
-                                st.info("No image available")
+                                st.info("Chart data is unavailable.")
+                    
+                        elif visual_type == "image":
+                            image_url = slide.get("image_url")
+                    
+                            if image_url and image_url.startswith("http"):
+                                st.image(image_url, width=550)
+                            else:
+                                st.info("Image is unavailable.")
+                    
+                        else:
+                            st.info("No visual is available for this section.")
+
 
                 st.divider()
 
