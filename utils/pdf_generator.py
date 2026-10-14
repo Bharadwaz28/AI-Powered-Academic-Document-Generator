@@ -191,54 +191,70 @@ def generate_pdf(slides, topic):
         # GRAPH HAS PRIORITY
         # ==================================================
 
-        chart_path = generate_chart(
-            slide.get("chart_data"),
-            i
-        )
-
-        if chart_path:
-
-            try:
-
-                chart_img = Image(
-                    chart_path,
-                    width=6.2 * inch,
-                    height=4.0 * inch
-                )
-
-                section.append(chart_img)
-
-            except Exception as e:
-                print("Chart Error:", e)
-
-        else:
-
-            img_url = slide.get("image_url")
-
-            if img_url:
-
+        
+        # ---------- CHART OR IMAGE: NEVER BOTH ----------
+        
+        chart_data = slide.get("chart_data")
+        
+        if chart_data:
+            chart_path = generate_chart(chart_data, i)
+        
+            if chart_path:
                 try:
-
-                    img_data = requests.get(
-                        img_url,
-                        timeout=10
-                    ).content
-
-                    img_path = f"outputs/img_{i}.jpg"
-
-                    with open(img_path, "wb") as f:
-                        f.write(img_data)
-
-                    report_img = Image(
-                        img_path,
-                        width=6.0 * inch,
-                        height=3.8 * inch
+                    chart_img = Image(
+                        chart_path,
+                        width=6.2 * inch,
+                        height=4.0 * inch
                     )
-
-                    section.append(report_img)
-
+                    section.append(chart_img)
+                except Exception as e:
+                    print("Chart Error:", e)
+        
+            else:
+                img_url = slide.get("image_url")
+                if img_url:
+                    try:
+                        response = requests.get(img_url, timeout=10)
+                        response.raise_for_status()
+        
+                        img_path = f"outputs/img_{i}.jpg"
+        
+                        with open(img_path, "wb") as f:
+                            f.write(response.content)
+        
+                        section.append(
+                            Image(
+                                img_path,
+                                width=6.0 * inch,
+                                height=3.8 * inch
+                            )
+                        )
+                    except Exception as e:
+                        print("Image Error:", e)
+        
+        else:
+            img_url = slide.get("image_url")
+        
+            if img_url:
+                try:
+                    response = requests.get(img_url, timeout=10)
+                    response.raise_for_status()
+        
+                    img_path = f"outputs/img_{i}.jpg"
+        
+                    with open(img_path, "wb") as f:
+                        f.write(response.content)
+        
+                    section.append(
+                        Image(
+                            img_path,
+                            width=6.0 * inch,
+                            height=3.8 * inch
+                        )
+                    )
                 except Exception as e:
                     print("Image Error:", e)
+
 
         section.append(Spacer(1, 15))
 
