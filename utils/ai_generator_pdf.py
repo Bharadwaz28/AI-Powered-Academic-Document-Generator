@@ -397,26 +397,28 @@ def generate_ai_content(topic, sections, category, format_type):
 
         content = generate_section_content(topic, title)
 
+
+        # ---------- CHART OR IMAGE: EXACTLY ONE ----------
+        
         chart_data = generate_chart(
             topic,
             title,
-            content,
+            content
         )
-
+        
         image_url = None
-
-        # Preserve the existing image-fetcher behaviour.
+        
         if chart_data is None:
             image_url = get_image_url(f"{title} {topic}")
-
+        
         slides.append({
             "title": title,
             "content": content,
             "image_url": image_url,
-            "chart_data": chart_data,
+            "chart_data": chart_data
         })
 
-        print(f"CHECKPOINT 5 PASSED: Section {index} validated.")
+    print(f"CHECKPOINT 5 PASSED: Section {index} validated.")
 
     if len(slides) != sections:
         raise RuntimeError(
