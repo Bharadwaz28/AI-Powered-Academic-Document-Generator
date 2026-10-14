@@ -1,4 +1,3 @@
-
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -70,7 +69,10 @@ def generate_pdf(slides, topic):
     )
 
     elements = []
+
+    # Keep references to in-memory image streams until doc.build ends.
     image_streams = []
+    temporary_files = []
 
     try:
         # ---------------- TITLE PAGE ----------------
@@ -125,35 +127,35 @@ def generate_pdf(slides, topic):
                     section.append(Paragraph(para, text_style))
                     section.append(Spacer(1, 10))
 
+            # Choose ONE visual per section.
+            # Alternate chart/image when both resources are available.
             chart_data = slide.get("chart_data")
-            image_url = slide.get("image_url")
+            img_url = slide.get("image_url")
 
-            # =================================================
-            # VISUAL SELECTION
-            # Even section index: chart
-            # Odd section index: image
-            # Each section attempts to add only ONE visual.
-            # =================================================
-            prefer_chart = (i % 2 == 0)
+            prefer_chart = bool(chart_data) and (
+                not img_url or i % 2 == 0
+            )
 
             visual_added = False
 
-            # ---------------- CHART SECTION ----------------
-            if prefer_chart and chart_data:
+            # ---------------- CHART ----------------
+            if prefer_chart:
                 try:
                     chart_path = generate_chart(chart_data, i)
 
                     if chart_path and os.path.isfile(chart_path):
+                        # Read chart bytes immediately. This avoids
+                        # ReportLab later trying to reopen a deleted file.
                         with open(chart_path, "rb") as chart_file:
                             chart_bytes = chart_file.read()
 
                         if chart_bytes:
-                            chart_stream = BytesIO(chart_bytes)
-                            image_streams.append(chart_stream)
+                            stream = BytesIO(chart_bytes)
+                            image_streams.append(stream)
 
                             section.append(
                                 Image(
-                                    chart_stream,
+                                    stream,
                                     width=6.2 * inch,
                                     height=4.0 * inch,
                                 )
@@ -162,78 +164,67 @@ def generate_pdf(slides, topic):
                             visual_added = True
 
                 except Exception as e:
-                    print(
-                        f"Chart Error in section {i + 1}: {e}"
-                    )
+                    print(f"Chart Error for section {i + 1}: {e}")
 
-            # ---------------- IMAGE SECTION ----------------
-            # Image-designated sections never fall back to charts.
-            if not prefer_chart and image_url:
+            # ---------------- IMAGE ----------------
+            # Use the image if selected, or if chart generation failed.
+            if not visual_added and img_url:
                 try:
                     response = requests.get(
-                        image_url,
+                        img_url,
                         timeout=15,
                     )
                     response.raise_for_status()
 
-                    if not response.content:
-                        raise ValueError("Downloaded image is empty.")
+                    image_bytes = response.content
 
-                    image_stream = BytesIO(response.content)
-                    image_streams.append(image_stream)
+                    if image_bytes:
+                        stream = BytesIO(image_bytes)
+                        image_streams.append(stream)
 
-                    section.append(
-                        Image(
-                            image_stream,
-                            width=6.0 * inch,
-                            height=3.8 * inch,
+                        section.append(
+                            Image(
+                                stream,
+                                width=6.0 * inch,
+                                height=3.8 * inch,
+                            )
                         )
-                    )
 
-                    visual_added = True
+                        visual_added = True
 
                 except Exception as e:
-                    print(
-                        f"Image Error in section {i + 1}: {e}"
-                    )
+                    print(f"Image Error for section {i + 1}: {e}")
 
-            # ---------------- IMAGE FALLBACK ----------------
-            # If a chart fails, try an image.
-            # Never show a chart on an image-designated section.
-            if prefer_chart and not visual_added and image_url:
+            # If chart was not preferred and no image could be loaded,
+            # try the chart as a final fallback.
+            if (
+                not visual_added
+                and chart_data
+                and not prefer_chart
+            ):
                 try:
-                    response = requests.get(
-                        image_url,
-                        timeout=15,
-                    )
-                    response.raise_for_status()
+                    chart_path = generate_chart(chart_data, i)
 
-                    if not response.content:
-                        raise ValueError("Downloaded image is empty.")
+                    if chart_path and os.path.isfile(chart_path):
+                        with open(chart_path, "rb") as chart_file:
+                            chart_bytes = chart_file.read()
 
-                    image_stream = BytesIO(response.content)
-                    image_streams.append(image_stream)
+                        if chart_bytes:
+                            stream = BytesIO(chart_bytes)
+                            image_streams.append(stream)
 
-                    section.append(
-                        Image(
-                            image_stream,
-                            width=6.0 * inch,
-                            height=3.8 * inch,
-                        )
-                    )
+                            section.append(
+                                Image(
+                                    stream,
+                                    width=6.2 * inch,
+                                    height=4.0 * inch,
+                                )
+                            )
 
-                    visual_added = True
+                            visual_added = True
 
                 except Exception as e:
-                    print(
-                        f"Fallback Image Error in section {i + 1}: {e}"
-                    )
-
-            if not visual_added:
-                print(
-                    f"WARNING: No visual available for section "
-                    f"{i + 1}: {slide.get('title', '')}"
-                )
+                    print(f"Fallback Chart Error for section {i + 1}: {e}")
 
             section.append(Spacer(1, 15))
             elements.append(KeepTogether(section))
@@ -241,7 +232,7 @@ def generate_pdf(slides, topic):
             if i < len(slides) - 1:
                 elements.append(PageBreak())
 
-        # Build the PDF before closing streams or deleting chart files.
+        # Build before removing any generated chart files.
         doc.build(
             elements,
             onFirstPage=add_page_number,
@@ -252,11 +243,10 @@ def generate_pdf(slides, topic):
         return file_path
 
     finally:
-        # Release image streams after ReportLab has finished building.
+        # Clean up only after ReportLab has finished building the PDF.
         for stream in image_streams:
             stream.close()
 
-        # Remove temporary assets only after the build attempt.
         for pattern in (
             "outputs/img_*.jpg",
             "outputs/chart_*.png",
