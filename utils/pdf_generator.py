@@ -160,7 +160,17 @@ def generate_pdf(slides, topic):
             image_url = slide.get("image_url")
 
             # Randomly choose a visual for each section.
-            preferred_visual = random.choice(["chart", "image"])
+            # Use the visual already chosen in app.py (same as the preview).
+            saved_visual = slide.get("visual_type")
+
+            if saved_visual in ("chart", "image"):
+                preferred_visual = saved_visual
+            elif saved_visual == "none":
+                preferred_visual = None
+            else:
+                # Only used if visual_type is missing
+                preferred_visual = random.choice(["chart", "image"])
+
             visual_added = False
 
             def add_chart():
@@ -228,21 +238,38 @@ def generate_pdf(slides, topic):
             # If the chosen visual fails, try the other type.
             if not visual_added:
                 try:
+                                # Try the selected visual first.
+            if preferred_visual:
+                try:
                     if preferred_visual == "chart":
-                        visual_added = add_image()
-                    else:
                         visual_added = add_chart()
+                    else:
+                        visual_added = add_image()
 
                 except Exception as exc:
                     print(
-                        f"Fallback visual error in section "
+                        f"{preferred_visual.title()} error in section "
                         f"{i + 1}: {exc}"
                     )
 
-            if not visual_added:
-                print(
-                    f"WARNING: No visual available for section {i + 1}."
-                )
+                # If the chosen visual fails, try the other type.
+                if not visual_added:
+                    try:
+                        if preferred_visual == "chart":
+                            visual_added = add_image()
+                        else:
+                            visual_added = add_chart()
+
+                    except Exception as exc:
+                        print(
+                            f"Fallback visual error in section "
+                            f"{i + 1}: {exc}"
+                        )
+
+                if not visual_added:
+                    print(
+                        f"WARNING: No visual available for section {i + 1}."
+                    )
 
             section.append(Spacer(1, 15))
             elements.append(KeepTogether(section))
