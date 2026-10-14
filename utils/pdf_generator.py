@@ -1,3 +1,4 @@
+
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -5,24 +6,21 @@ from reportlab.platypus import (
     Spacer,
     Image,
     PageBreak,
-    KeepTogether
+    KeepTogether,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch, mm
 from reportlab.lib.colors import HexColor
 
 import os
-import requests
 import glob
-from io import BytesIO
+import requests
 
+from io import BytesIO
 from utils.chart_generator_pdf import generate_chart
 
-styles = getSampleStyleSheet()
 
-# ==================================================
-# STYLES
-# ==================================================
+styles = getSampleStyleSheet()
 
 title_style = ParagraphStyle(
     "Title",
@@ -30,7 +28,7 @@ title_style = ParagraphStyle(
     alignment=1,
     fontSize=30,
     textColor=HexColor("#2E86C1"),
-    spaceAfter=25
+    spaceAfter=25,
 )
 
 heading_style = ParagraphStyle(
@@ -38,7 +36,7 @@ heading_style = ParagraphStyle(
     parent=styles["Heading1"],
     fontSize=18,
     textColor=HexColor("#1F618D"),
-    spaceAfter=12
+    spaceAfter=12,
 )
 
 text_style = ParagraphStyle(
@@ -46,34 +44,18 @@ text_style = ParagraphStyle(
     parent=styles["Normal"],
     fontSize=11,
     leading=20,
-    alignment=4,  # justified
-    spaceAfter=10
+    alignment=4,
+    spaceAfter=10,
 )
-
-# ==================================================
-# PAGE NUMBER
-# ==================================================
 
 
 def add_page_number(canvas, doc):
-
     page_num = canvas.getPageNumber()
-
     canvas.setFont("Helvetica", 10)
+    canvas.drawRightString(200 * mm, 15, str(page_num))
 
-    canvas.drawRightString(
-        200 * mm,
-        15,
-        str(page_num)
-    )
-
-
-# ==================================================
-# PDF GENERATOR
-# ==================================================
 
 def generate_pdf(slides, topic):
-
     os.makedirs("outputs", exist_ok=True)
 
     file_path = "outputs/report.pdf"
@@ -84,209 +66,196 @@ def generate_pdf(slides, topic):
         rightMargin=40,
         leftMargin=40,
         topMargin=40,
-        bottomMargin=40
+        bottomMargin=40,
     )
 
     elements = []
 
-    # ==================================================
-    # TITLE PAGE
-    # ==================================================
+    # Keep references to in-memory image streams until doc.build ends.
+    image_streams = []
+    temporary_files = []
 
-    elements.append(Spacer(1, 220))
-
-    elements.append(
-        Paragraph(
-            topic.upper(),
-            title_style
-        )
-    )
-
-    elements.append(
-        Paragraph(
-            "AI Generated Academic Report",
-            styles["Heading2"]
-        )
-    )
-
-    elements.append(PageBreak())
-
-    # ==================================================
-    # TABLE OF CONTENTS
-    # ==================================================
-
-    elements.append(
-        Paragraph(
-            "Table of Contents",
-            styles["Heading1"]
-        )
-    )
-
-    elements.append(Spacer(1, 20))
-
-    for i, slide in enumerate(slides):
-
+    try:
+        # ---------------- TITLE PAGE ----------------
+        elements.append(Spacer(1, 220))
+        elements.append(Paragraph(topic.upper(), title_style))
         elements.append(
             Paragraph(
-                f"{i+1}. {slide.get('title', '')}",
-                styles["Normal"]
+                "AI Generated Academic Report",
+                styles["Heading2"],
             )
         )
+        elements.append(PageBreak())
 
-        elements.append(Spacer(1, 5))
-
-    elements.append(PageBreak())
-
-    # ==================================================
-    # CONTENT PAGES
-    # ==================================================
-
-    for i, slide in enumerate(slides):
-
-        section = []
-
-        # ----------------------------------------------
-        # TITLE
-        # ----------------------------------------------
-
-        section.append(
-            Paragraph(
-                f"{i+1}. {slide.get('title', '')}",
-                heading_style
-            )
+        # ---------------- TABLE OF CONTENTS ----------------
+        elements.append(
+            Paragraph("Table of Contents", styles["Heading1"])
         )
+        elements.append(Spacer(1, 20))
 
-        section.append(Spacer(1, 10))
-
-        # ----------------------------------------------
-        # CONTENT
-        # ----------------------------------------------
-
-        content = slide.get("content", "")
-
-        # Prevent huge paragraphs
-        if len(content) > 1800:
-            content = content[:1800] + "..."
-
-        paragraphs = content.split("\n\n")
-
-        for para in paragraphs:
-
-            para = para.strip()
-
-            if para:
-
-                section.append(
-                    Paragraph(
-                        para,
-                        text_style
-                    )
+        for i, slide in enumerate(slides):
+            elements.append(
+                Paragraph(
+                    f"{i + 1}. {slide.get('title', '')}",
+                    styles["Normal"],
                 )
+            )
+            elements.append(Spacer(1, 5))
 
-                section.append(
-                    Spacer(1, 10)
+        elements.append(PageBreak())
+
+        # ---------------- REPORT SECTIONS ----------------
+        for i, slide in enumerate(slides):
+            section = []
+
+            section.append(
+                Paragraph(
+                    f"{i + 1}. {slide.get('title', '')}",
+                    heading_style,
                 )
+            )
+            section.append(Spacer(1, 10))
 
-        # ==================================================
-        # GRAPH HAS PRIORITY
-        # ==================================================
+            content = slide.get("content", "")
 
-        
-        # ---------- CHART OR IMAGE: NEVER BOTH ----------
-        
-        chart_data = slide.get("chart_data")
-        
-        if chart_data:
-            chart_path = generate_chart(chart_data, i)
-        
-            if chart_path:
+            if len(content) > 1800:
+                content = content[:1800] + "..."
+
+            for para in content.split("\n\n"):
+                para = para.strip()
+
+                if para:
+                    section.append(Paragraph(para, text_style))
+                    section.append(Spacer(1, 10))
+
+            # Choose ONE visual per section.
+            # Alternate chart/image when both resources are available.
+            chart_data = slide.get("chart_data")
+            img_url = slide.get("image_url")
+
+            prefer_chart = bool(chart_data) and (
+                not img_url or i % 2 == 0
+            )
+
+            visual_added = False
+
+            # ---------------- CHART ----------------
+            if prefer_chart:
                 try:
-                    chart_img = Image(
-                        chart_path,
-                        width=6.2 * inch,
-                        height=4.0 * inch
-                    )
-                    section.append(chart_img)
+                    chart_path = generate_chart(chart_data, i)
+
+                    if chart_path and os.path.isfile(chart_path):
+                        # Read chart bytes immediately. This avoids
+                        # ReportLab later trying to reopen a deleted file.
+                        with open(chart_path, "rb") as chart_file:
+                            chart_bytes = chart_file.read()
+
+                        if chart_bytes:
+                            stream = BytesIO(chart_bytes)
+                            image_streams.append(stream)
+
+                            section.append(
+                                Image(
+                                    stream,
+                                    width=6.2 * inch,
+                                    height=4.0 * inch,
+                                )
+                            )
+
+                            visual_added = True
+
                 except Exception as e:
-                    print("Chart Error:", e)
-        
-            else:
-                img_url = slide.get("image_url")
-                if img_url:
-                    try:
-                        response = requests.get(img_url, timeout=10)
-                        response.raise_for_status()
-        
-                        img_path = f"outputs/img_{i}.jpg"
-        
-                        with open(img_path, "wb") as f:
-                            f.write(response.content)
-        
+                    print(f"Chart Error for section {i + 1}: {e}")
+
+            # ---------------- IMAGE ----------------
+            # Use the image if selected, or if chart generation failed.
+            if not visual_added and img_url:
+                try:
+                    response = requests.get(
+                        img_url,
+                        timeout=15,
+                    )
+                    response.raise_for_status()
+
+                    image_bytes = response.content
+
+                    if image_bytes:
+                        stream = BytesIO(image_bytes)
+                        image_streams.append(stream)
+
                         section.append(
                             Image(
-                                img_path,
+                                stream,
                                 width=6.0 * inch,
-                                height=3.8 * inch
+                                height=3.8 * inch,
                             )
                         )
-                    except Exception as e:
-                        print("Image Error:", e)
-        
-        else:
-            img_url = slide.get("image_url")
-        
-            if img_url:
-                try:
-                    response = requests.get(img_url, timeout=10)
-                    response.raise_for_status()
-        
-                    img_path = f"outputs/img_{i}.jpg"
-        
-                    with open(img_path, "wb") as f:
-                        f.write(response.content)
-        
-                    section.append(
-                        Image(
-                            img_path,
-                            width=6.0 * inch,
-                            height=3.8 * inch
-                        )
-                    )
+
+                        visual_added = True
+
                 except Exception as e:
-                    print("Image Error:", e)
+                    print(f"Image Error for section {i + 1}: {e}")
 
+            # If chart was not preferred and no image could be loaded,
+            # try the chart as a final fallback.
+            if (
+                not visual_added
+                and chart_data
+                and not prefer_chart
+            ):
+                try:
+                    chart_path = generate_chart(chart_data, i)
 
-        section.append(Spacer(1, 15))
+                    if chart_path and os.path.isfile(chart_path):
+                        with open(chart_path, "rb") as chart_file:
+                            chart_bytes = chart_file.read()
 
-        # ----------------------------------------------
-        # KEEP SECTION TOGETHER
-        # ----------------------------------------------
+                        if chart_bytes:
+                            stream = BytesIO(chart_bytes)
+                            image_streams.append(stream)
 
-        elements.append(
-            KeepTogether(section)
+                            section.append(
+                                Image(
+                                    stream,
+                                    width=6.2 * inch,
+                                    height=4.0 * inch,
+                                )
+                            )
+
+                            visual_added = True
+
+                except Exception as e:
+                    print(f"Fallback Chart Error for section {i + 1}: {e}")
+
+            section.append(Spacer(1, 15))
+            elements.append(KeepTogether(section))
+
+            if i < len(slides) - 1:
+                elements.append(PageBreak())
+
+        # Build before removing any generated chart files.
+        doc.build(
+            elements,
+            onFirstPage=add_page_number,
+            onLaterPages=add_page_number,
         )
 
-        # ----------------------------------------------
-        # NEW PAGE
-        # ----------------------------------------------
+        print(f"PDF generated successfully: {file_path}")
+        return file_path
 
-        if i < len(slides) - 1:
-            elements.append(PageBreak())
+    finally:
+        # Clean up only after ReportLab has finished building the PDF.
+        for stream in image_streams:
+            stream.close()
 
-    # ==================================================
-    # BUILD PDF
-    # ==================================================
-
-    doc.build(
-        elements,
-        onFirstPage=add_page_number,
-        onLaterPages=add_page_number
-    )
-
-    for file in glob.glob("outputs/img_*.jpg"):
-        os.remove(file)
-
-    for file in glob.glob("outputs/chart_*.png"):
-        os.remove(file)
-
-    return file_path
+        for pattern in (
+            "outputs/img_*.jpg",
+            "outputs/chart_*.png",
+        ):
+            for temporary_file in glob.glob(pattern):
+                try:
+                    os.remove(temporary_file)
+                except OSError as e:
+                    print(
+                        f"Cleanup warning for {temporary_file}: {e}"
+                    )
