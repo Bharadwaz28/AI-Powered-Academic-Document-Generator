@@ -163,7 +163,7 @@ Return only the paragraphs.
             )
 
             response = client.chat.completions.create(
-                model=CONTENT_MODEL,
+                model=MODEL,
                 messages=[
                     {
                         "role": "user",
