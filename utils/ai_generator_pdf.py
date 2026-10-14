@@ -397,7 +397,7 @@ def generate_ai_content(topic, sections, category, format_type):
 
         content = generate_section_content(topic, title)
 
-        chart_data = generate_chart_data(
+        chart_data = generate_chart(
             topic,
             title,
             content,
