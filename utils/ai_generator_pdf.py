@@ -1,38 +1,47 @@
 
+from utils.image_fetcher_pdf import get_image_url
+from utils.chart_generator_pdf import generate_chart
+from dotenv import load_dotenv
+from groq import Groq
+import math
 import os
 import re
 
-from groq import Groq
-from dotenv import load_dotenv
 
-from utils.image_fetcher_pdf import get_image_url
-
+# ============================================================
+# CHECKPOINT 1: CONFIGURATION AND API VALIDATION
+# ============================================================
 
 load_dotenv()
 
 api_key = os.getenv("GROQ_API_KEY")
 
-if not api_key:
+if not api_key or not api_key.strip():
     raise ValueError(
-        "GROQ_API_KEY is missing. Configure it in .env "
-        "locally or Streamlit Cloud Secrets when deployed."
+        "CHECKPOINT 1 FAILED: GROQ_API_KEY is missing. "
+        "Configure it in .env or Streamlit Cloud Secrets."
     )
 
-client = Groq(api_key=api_key)
+client = Groq(api_key=api_key.strip())
 
 TITLE_MODEL = "openai/gpt-oss-120b"
 CONTENT_MODEL = "llama-3.1-8b-instant"
 
+print("CHECKPOINT 1 PASSED: Groq client configured.")
 
-def parse_section_titles(title_text, expected_count):
-    """Extract numbered titles and reject incomplete model responses."""
+
+# ============================================================
+# CHECKPOINT 2: SECTION TITLE GENERATION
+# ============================================================
+
+def parse_section_titles(text, expected_count):
+    """Extract numbered titles and validate count and uniqueness."""
 
     titles = []
 
-    for line in title_text.splitlines():
+    for line in text.splitlines():
         line = line.strip()
 
-        # Ignore Markdown code fences and empty lines.
         if not line or line.startswith("```"):
             continue
 
@@ -46,8 +55,7 @@ def parse_section_titles(title_text, expected_count):
 
         title = match.group(2).strip().strip("*").strip()
 
-        # Remove unwanted generic prefixes without damaging
-        # legitimate topic-specific section titles.
+        # Remove only unwanted introductory prefixes.
         title = re.sub(
             r"^(?:AI|Artificial Intelligence)\s*[-:|]\s*",
             "",
@@ -62,256 +70,377 @@ def parse_section_titles(title_text, expected_count):
 
     if len(titles) != expected_count:
         raise ValueError(
-            f"Expected {expected_count} unique section titles, "
+            f"Expected {expected_count} unique titles, "
             f"but parsed {len(titles)}. "
-            f"Model response: {title_text[:1000]}"
+            f"Response: {text[:800]}"
         )
 
     return titles
 
 
 def generate_section_titles(topic, sections):
-    prompt = f"""
-Generate exactly {sections} unique, informative academic report
-section titles about the topic: {topic}
-
-Requirements:
-- Return exactly {sections} numbered titles.
-- Number consecutively from 1 to {sections}.
-- Make every title specific to the topic.
-- Use an appropriate academic report structure.
-- Do not include explanations or introductory text.
-- Do not use generic titles such as "Additional Analysis".
-- Avoid repeating the topic as the entire title.
-
-Example format:
-1. Introduction to the Topic
-2. Key Concepts and Principles
-3. Applications and Implications
-"""
-
-    response = client.chat.completions.create(
-        model=TITLE_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
-        max_tokens=max(300, sections * 80)
-    )
-
-    title_text = response.choices[0].message.content or ""
-
-    if not title_text.strip():
-        raise ValueError("The AI returned an empty section-title response.")
-
-    titles = parse_section_titles(title_text, sections)
-
-    print(f"Successfully generated {len(titles)} section titles.")
-
-    return titles
-
-
-def generate_section_content(topic, aspect):
-    """Generate topic-specific academic content."""
 
     prompt = f"""
-Write an informative academic report section.
+Generate exactly {sections} unique academic report section titles.
 
-Overall topic: {topic}
-Section title: {aspect}
-
-Requirements:
-- Write two substantive academic paragraphs.
-- Aim for 80-100 words per paragraph.
-- Discuss the actual topic and section, not unrelated subjects.
-- Explain relevant concepts, mechanisms, applications, and limitations.
-- Use specific, accurate details where possible.
-- Never invent statistics, studies, citations, or numerical findings.
-- Do not repeat the section heading.
-- Do not include Markdown headings, numbered lists, or a preamble.
-- Separate the two paragraphs with a blank line.
-- Return only the section text.
-"""
-
-    response = client.chat.completions.create(
-        model=CONTENT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=650
-    )
-
-    content = (response.choices[0].message.content or "").strip()
-
-    # Remove a response label if the model adds one.
-    content = re.sub(
-        r"^\s*TEXT\s*:\s*",
-        "",
-        content,
-        count=1,
-        flags=re.IGNORECASE
-    ).strip()
-
-    if not content:
-        raise ValueError(f"Empty content returned for section: {aspect}")
-
-    # Preserve paragraph separation while removing empty paragraphs.
-    paragraphs = [
-        paragraph.strip()
-        for paragraph in re.split(r"\n\s*\n", content)
-        if paragraph.strip()
-    ]
-
-    # Don't silently replace incomplete AI output with generic filler.
-    if len(paragraphs) < 2:
-        raise ValueError(
-            f"Incomplete content for '{aspect}': "
-            f"expected two paragraphs, got {len(paragraphs)}. "
-            f"Response: {content[:500]}"
-        )
-
-    if len(content.split()) < 80:
-        raise ValueError(
-            f"Content for '{aspect}' is too short "
-            f"({len(content.split())} words)."
-        )
-
-    return "\n\n".join(paragraphs[:2])
-
-
-def generate_chart(topic, aspect, content):
-    """
-    Extract chart data only when the section contains explicit,
-    meaningful quantitative information.
-
-    Returns chart data for pdf_generator.py to render, or None.
-    """
-
-    prompt = f"""
-Determine whether the following academic section contains enough
-explicit quantitative information to create a meaningful chart.
-
-Topic: {topic}
-Section: {aspect}
-Content:
-{content}
+Report topic: {topic}
 
 Rules:
-- Use only numerical facts explicitly stated in the content.
-- Never invent values, statistics, percentages, or measurements.
-- Do not turn qualitative claims into numerical scores.
-- Use at least 3 distinct, explicitly supported categories or data points.
-- If there is insufficient quantitative information, return exactly:
-NO_CHART
+- Number titles consecutively from 1 to {sections}.
+- Make every title specific to the topic.
+- Use a logical academic report structure.
+- Avoid generic titles such as Additional Analysis.
+- Do not add introductions, explanations, or Markdown.
+- Do not repeat titles.
 
-Otherwise return exactly these two lines:
-LABELS: label1, label2, label3
-VALUES: value1, value2, value3
-
-Use numeric values. Do not add explanations or Markdown.
+Return only the numbered titles.
 """
 
-    response = client.chat.completions.create(
-        model=CONTENT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        max_tokens=180
-    )
+    last_error = None
 
-    result = (response.choices[0].message.content or "").strip()
-
-    if not result or "NO_CHART" in result.upper():
-        return None
-
-    labels = []
-    values = []
-
-    for line in result.splitlines():
-        if ":" not in line:
-            continue
-
-        key, value = line.split(":", 1)
-        key = key.strip().upper()
-
-        if key == "LABELS":
-            labels = [item.strip() for item in value.split(",")]
-
-        elif key == "VALUES":
-            try:
-                values = [
-                    float(item.strip().replace("%", ""))
-                    for item in value.split(",")
-                ]
-            except ValueError:
-                return None
-
-    if (
-        len(labels) < 3
-        or len(labels) != len(values)
-        or any(not label for label in labels)
-        or any(not __import__("math").isfinite(v) for v in values)
-    ):
-        return None
-
-    # Keep the data structure expected by chart_generator_pdf.py.
-    return {
-        "labels": labels,
-        "values": values,
-        "type": "bar",
-        "title": f"{aspect} — Reported Data"
-    }
-
-
-def generate_ai_content(topic, sections, category, format_type):
-    """
-    Generate report sections.
-
-    The returned structure remains compatible with the existing
-    PDF and PPT generation workflow.
-    """
-
-    if not isinstance(sections, int) or sections < 1:
-        raise ValueError("sections must be a positive integer.")
-
-    slides = []
-    aspects = generate_section_titles(topic, sections)
-
-    for section_number, aspect in enumerate(aspects, start=1):
-        print(
-            f"Generating section {section_number}/{sections}: {aspect}"
-        )
-
+    for attempt in range(1, 3):
         try:
-            content = generate_section_content(topic, aspect)
-
-            chart_data = generate_chart_data(
-                topic=topic,
-                aspect=aspect,
-                content=content
+            print(
+                f"CHECKPOINT 2: Generating titles, attempt {attempt}/2."
             )
 
-            # Preserve the existing image fetcher functionality.
-            image_url = None
+            response = client.chat.completions.create(
+                model=TITLE_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=max(300, sections * 80)
+            )
 
-            if chart_data is None:
-                image_url = get_image_url(f"{aspect} {topic}")
+            text = response.choices[0].message.content or ""
 
-            slides.append({
-                "title": aspect,
-                "content": content,
-                "image_url": image_url,
-                "chart_data": chart_data
-            })
+            titles = parse_section_titles(text, sections)
+
+            print(
+                f"CHECKPOINT 2 PASSED: {len(titles)} valid titles."
+            )
+
+            return titles
 
         except Exception as exc:
-            # Fail visibly rather than generating a misleading report.
-            raise RuntimeError(
-                f"Failed to generate section "
-                f"{section_number} ('{aspect}'): {exc}"
-            ) from exc
+            last_error = exc
+            print(f"TITLE GENERATION ERROR: {exc}")
+
+    raise RuntimeError(
+        f"CHECKPOINT 2 FAILED: Could not generate valid titles. "
+        f"Last error: {last_error}"
+    )
+
+
+# ============================================================
+# CHECKPOINT 3: ACADEMIC CONTENT GENERATION
+# ============================================================
+
+def generate_section_content(topic, section_title):
+
+    prompt = f"""
+Write a substantive academic report section.
+
+Overall topic: {topic}
+Section title: {section_title}
+
+Requirements:
+- Write exactly two substantive paragraphs.
+- Aim for 80-100 words per paragraph.
+- Discuss the actual topic and the specified section.
+- Explain relevant concepts, mechanisms, applications, or implications.
+- Use accurate information and appropriate academic language.
+- Never invent studies, citations, statistics, or numerical findings.
+- Do not repeat the section heading.
+- Do not include Markdown headings or numbered lists.
+- Separate the paragraphs with one blank line.
+- Return only the two paragraphs.
+"""
+
+    last_error = None
+
+    for attempt in range(1, 3):
+        try:
+            print(
+                f"CHECKPOINT 3: Writing '{section_title}', "
+                f"attempt {attempt}/2."
+            )
+
+            response = client.chat.completions.create(
+                model=CONTENT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=650
+            )
+
+            content = (
+                response.choices[0].message.content or ""
+            ).strip()
+
+            content = re.sub(
+                r"^\s*TEXT\s*:\s*",
+                "",
+                content,
+                count=1,
+                flags=re.IGNORECASE
+            ).strip()
+
+            # Normalize paragraph boundaries without joining
+            # separate paragraphs accidentally.
+            paragraphs = [
+                p.strip()
+                for p in re.split(r"\n\s*\n", content)
+                if p.strip()
+            ]
+
+            # If the model returns one block, do not silently
+            # replace it with generic filler text.
+            if len(paragraphs) != 2:
+                last_error = ValueError(
+                    f"Expected 2 paragraphs; received {len(paragraphs)}."
+                )
+                continue
+
+            word_count = len(content.split())
+
+            if word_count < 100:
+                last_error = ValueError(
+                    f"Content too short: {word_count} words."
+                )
+                continue
+
+            if len(content) < 300:
+                last_error = ValueError(
+                    "Content response is unexpectedly short."
+                )
+                continue
+
+            print(
+                f"CHECKPOINT 3 PASSED: '{section_title}', "
+                f"{word_count} words."
+            )
+
+            return "\n\n".join(paragraphs)
+
+        except Exception as exc:
+            last_error = exc
+            print(f"CONTENT GENERATION ERROR: {exc}")
+
+    raise RuntimeError(
+        f"CHECKPOINT 3 FAILED for '{section_title}'. "
+        f"Last error: {last_error}"
+    )
+
+
+# ============================================================
+# CHECKPOINT 4: CHART DATA GENERATION
+# ============================================================
+
+def generate_chart(topic, section_title, content):
+    """
+    Generate explicitly illustrative chart data.
+
+    These values are NOT real-world statistics. They must be
+    labelled illustrative in the resulting chart title.
+    """
+
+    prompt = f"""
+Create a small ILLUSTRATIVE chart for an academic report.
+
+Topic: {topic}
+Section: {section_title}
+Section content:
+{content}
+
+Important:
+- These are illustrative example values, NOT real statistics.
+- Do not claim the values are observed, measured, or researched.
+- Choose four meaningful categories related to the section.
+- Use simple positive numeric values between 1 and 100.
+- Choose a bar chart.
+- Do not use the same labels for every section.
+- Return exactly these two lines and nothing else:
+
+LABELS: Category A, Category B, Category C, Category D
+VALUES: 20, 40, 60, 80
+
+Replace the example categories and values with suitable
+illustrative data for this section.
+"""
+
+    try:
+        print(
+            f"CHECKPOINT 4: Creating illustrative chart "
+            f"for '{section_title}'."
+        )
+
+        response = client.chat.completions.create(
+            model=CONTENT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=180
+        )
+
+        result = (response.choices[0].message.content or "").strip()
+
+        labels = []
+        values = []
+
+        for line in result.splitlines():
+            if ":" not in line:
+                continue
+
+            key, value = line.split(":", 1)
+            key = key.strip().upper()
+
+            if key == "LABELS":
+                labels = [
+                    item.strip()
+                    for item in value.split(",")
+                ]
+
+            elif key == "VALUES":
+                try:
+                    values = [
+                        float(item.strip().replace("%", ""))
+                        for item in value.split(",")
+                    ]
+                except ValueError:
+                    return None
+
+        if (
+            len(labels) != 4
+            or len(values) != 4
+            or any(not label for label in labels)
+            or len({label.lower() for label in labels}) != 4
+            or any(not math.isfinite(value) for value in values)
+            or any(value < 0 or value > 100 for value in values)
+        ):
+            print(
+                f"CHECKPOINT 4: Invalid chart data for "
+                f"'{section_title}'. Using an image instead."
+            )
+            return None
+
+        chart_data = {
+            "labels": labels,
+            "values": values,
+            "type": "bar",
+            "title": f"{section_title} (Illustrative Data)"
+        }
+
+        print(
+            f"CHECKPOINT 4 PASSED: Valid illustrative chart data "
+            f"for '{section_title}'."
+        )
+
+        return chart_data
+
+    except Exception as exc:
+        # Chart generation is optional. A chart failure must not
+        # discard otherwise valid academic section content.
+        print(
+            f"CHART DATA WARNING for '{section_title}': {exc}"
+        )
+        return None
+
+
+# ============================================================
+# CHECKPOINT 5: MAIN REPORT GENERATION
+# ============================================================
+
+def generate_ai_content(topic, sections, category, format_type):
+
+    if not isinstance(topic, str) or not topic.strip():
+        raise ValueError("CHECKPOINT 5 FAILED: Topic cannot be empty.")
+
+    if (
+        not isinstance(sections, int)
+        or isinstance(sections, bool)
+        or sections < 1
+        or sections > 20
+    ):
+        raise ValueError(
+            "CHECKPOINT 5 FAILED: Sections must be between 1 and 20."
+        )
+
+    topic = topic.strip()
+
+    print("=" * 60)
+    print("STARTING REPORT GENERATION")
+    print(f"Topic: {topic}")
+    print(f"Requested sections: {sections}")
+    print(f"Category: {category}")
+    print(f"Format: {format_type}")
+    print("=" * 60)
+
+    # Generate all titles before creating any section.
+    titles = generate_section_titles(topic, sections)
+
+    slides = []
+
+    for index, section_title in enumerate(titles):
+
+        print(
+            f"\nSECTION {index + 1}/{sections}: {section_title}"
+        )
+
+        # A content failure is fatal: never silently replace
+        # a failed section with generic text.
+        content = generate_section_content(
+            topic,
+            section_title
+        )
+
+        chart_data = generate_chart(
+            topic,
+            section_title,
+            content
+        )
+
+        # Preserve the existing image fetcher.
+        image_url = None
+
+        if chart_data is None:
+            image_url = get_image_url(
+                f"{section_title} {topic}"
+            )
+
+        slide = {
+            "title": section_title,
+            "content": content,
+            "image_url": image_url,
+            "chart_data": chart_data
+        }
+
+        slides.append(slide)
+
+        # CHECKPOINT 5: Validate the section before proceeding.
+        assert slide["title"].strip()
+        assert len(slide["content"].split()) >= 100
+        assert "\n\n" in slide["content"]
+
+        print(
+            f"CHECKPOINT 5 PASSED: Section {index + 1} validated."
+        )
 
     if len(slides) != sections:
         raise RuntimeError(
-            f"Expected {sections} sections, but generated {len(slides)}."
+            f"CHECKPOINT 5 FAILED: Expected {sections} sections, "
+            f"generated {len(slides)}."
         )
 
-    print(f"Successfully generated all {len(slides)} sections.")
+    if any(
+        slide["title"].lower().startswith("additional analysis")
+        for slide in slides
+    ):
+        raise RuntimeError(
+            "CHECKPOINT 5 FAILED: Generic placeholder title detected."
+        )
 
+    print("=" * 60)
+    print(f"CHECKPOINT 5 PASSED: {len(slides)} sections validated.")
+    print("REPORT CONTENT GENERATION COMPLETED.")
+    print("=" * 60)
+
+    # Keep the original interface expected by the PDF/PPT workflow.
     return slides
