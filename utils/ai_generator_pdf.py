@@ -134,39 +134,42 @@ Return only the numbered titles.
 # CHECKPOINT 3: ACADEMIC CONTENT GENERATION
 # ============================================================
 
+
 def generate_section_content(topic, section_title):
 
     prompt = f"""
-Write a substantive academic report section.
+Write an academic report section about the following.
 
 Overall topic: {topic}
 Section title: {section_title}
 
-Requirements:
-- Write exactly two substantive paragraphs.
-- Aim for 80-100 words per paragraph.
-- Discuss the actual topic and the specified section.
-- Explain relevant concepts, mechanisms, applications, or implications.
-- Use accurate information and appropriate academic language.
-- Never invent studies, citations, statistics, or numerical findings.
-- Do not repeat the section heading.
-- Do not include Markdown headings or numbered lists.
-- Separate the paragraphs with one blank line.
-- Return only the two paragraphs.
+Write exactly TWO paragraphs, each containing approximately
+80-100 words.
+
+Discuss the specified topic directly. Do not introduce an
+unrelated topic. Do not add a heading, numbering, preamble,
+or the label TEXT:.
+
+Separate the paragraphs with a blank line.
+Return only the paragraphs.
 """
 
     last_error = None
 
-    for attempt in range(1, 3):
+    for attempt in range(1, 4):
         try:
             print(
-                f"CHECKPOINT 3: Writing '{section_title}', "
-                f"attempt {attempt}/2."
+                f"Generating '{section_title}', attempt {attempt}/3"
             )
 
             response = client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                model=CONTENT_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
                 temperature=0.3,
                 max_tokens=650
             )
@@ -175,6 +178,16 @@ Requirements:
                 response.choices[0].message.content or ""
             ).strip()
 
+            # Remove optional Markdown fences.
+            content = re.sub(
+                r"^\s*```(?:text|markdown)?\s*",
+                "",
+                content,
+                flags=re.IGNORECASE
+            )
+            content = re.sub(r"\s*```\s*$", "", content)
+
+            # Remove an optional TEXT: prefix.
             content = re.sub(
                 r"^\s*TEXT\s*:\s*",
                 "",
@@ -183,51 +196,51 @@ Requirements:
                 flags=re.IGNORECASE
             ).strip()
 
-            # Normalize paragraph boundaries without joining
-            # separate paragraphs accidentally.
+            # Split on blank lines first.
             paragraphs = [
                 p.strip()
                 for p in re.split(r"\n\s*\n", content)
                 if p.strip()
             ]
 
-            # If the model returns one block, do not silently
-            # replace it with generic filler text.
-            if len(paragraphs) != 2:
-                last_error = ValueError(
-                    f"Expected 2 paragraphs; received {len(paragraphs)}."
-                )
-                continue
+            # If the model used single line breaks, split lines.
+            if len(paragraphs) == 1:
+                lines = [
+                    line.strip()
+                    for line in content.splitlines()
+                    if line.strip()
+                ]
+
+                if len(lines) == 2:
+                    paragraphs = lines
 
             word_count = len(content.split())
 
-            if word_count < 100:
+            if len(paragraphs) != 2 or word_count < 100:
                 last_error = ValueError(
-                    f"Content too short: {word_count} words."
+                    f"Expected two paragraphs and at least 100 words; "
+                    f"got {len(paragraphs)} paragraphs and "
+                    f"{word_count} words. Response: {content[:300]!r}"
                 )
-                continue
 
-            if len(content) < 300:
-                last_error = ValueError(
-                    "Content response is unexpectedly short."
-                )
+                print(f"CONTENT VALIDATION: {last_error}")
                 continue
 
             print(
-                f"CHECKPOINT 3 PASSED: '{section_title}', "
-                f"{word_count} words."
+                f"CONTENT CHECKPOINT PASSED: {word_count} words"
             )
 
             return "\n\n".join(paragraphs)
 
         except Exception as exc:
             last_error = exc
-            print(f"CONTENT GENERATION ERROR: {exc}")
+            print(f"CONTENT GENERATION ATTEMPT FAILED: {exc}")
 
     raise RuntimeError(
-        f"CHECKPOINT 3 FAILED for '{section_title}'. "
+        f"Could not generate valid content for '{section_title}'. "
         f"Last error: {last_error}"
     )
+
 
 
 # ============================================================
