@@ -4,6 +4,7 @@ import random
 from groq import Groq
 from dotenv import load_dotenv
 from utils.image_fetcher_pdf import get_image_url
+from utils.chart_generator_pdf import generate_chart
 
 load_dotenv()
 
@@ -193,101 +194,11 @@ def generate_ai_content(topic, sections, category, format_type):
             content = "\n\n".join(paragraphs)
 
             # ---------- CHART ----------
-            chart_data = None
-
-            forced_chart = None
-
-            generate_chart = False
-
-            pages_since_chart += 1
-
-            if pages_since_chart >= 2:
-
-                probability = min(
-                    0.15 * pages_since_chart,
-                    0.60
-                )
-
-                if random.random() < probability:
-
-                    generate_chart = True
-                    pages_since_chart = 0
-
-                    forced_chart = random.choice([
-                        "bar",
-                        "line",
-                        "pie"
-                    ])
-
-            if generate_chart:
-
-                chart_prompt = f"""
-                    Generate chart data from this section.
-
-                    SECTION TITLE:
-                    {aspect}
-
-                    SECTION CONTENT:
-                    {content[:400]}
-
-                    Rules:
-                    - Labels must come from the content.
-                    - Do not invent unrelated categories.
-                    - Use exactly 4 labels.
-                    - Values must be realistic.
-
-                    FORMAT:
-
-                    LABELS:item1,item2,item3,item4
-                    VALUES:number,number,number,number
-                """
-
-                chart_response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[{"role": "user", "content": chart_prompt}],
-                    temperature=0.4,
-                    max_tokens=150
-                )
-
-                chart_text = chart_response.choices[0].message.content.strip()
-
-                labels = []
-                values = []
-                chart_type = forced_chart if forced_chart else "bar"
-
-                for line in chart_text.split("\n"):
-
-                    line_upper = line.upper()
-
-                    if line_upper.startswith("LABELS"):
-                        labels = line.split(":")[1].split(",")
-
-                    elif line_upper.startswith("VALUES"):
-
-                        raw_vals = line.split(":")[1].split(",")
-
-                        values = [
-                            abs(float(v.replace("%", "").strip()))
-                            for v in raw_vals if v.strip()
-                        ]
-
-                if len(labels) == len(values) and len(labels) >= 3:
-
-                    chart_data = {
-                        "labels": labels,
-                        "values": values,
-                        "type": chart_type,
-                        "title": aspect + " Analysis"
-                    }
-
-                else:
-
-                    chart_data = {
-                        "labels": ["Category A", "Category B", "Category C", "Category D"],
-                        "values": [25, 35, 20, 20],
-                        "type": chart_type,
-                        "title": aspect + " Analysis"
-                    }
+            chart_data = generate_chart(
+                topic=topic,
+                section=aspect,
+                content=content
+            )
 
             # ---------- IMAGE ONLY IF NO CHART ----------
 
