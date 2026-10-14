@@ -407,9 +407,7 @@ def generate_ai_content(topic, sections, category, format_type):
         )
         
         image_url = None
-        
-        if chart_data is None:
-            image_url = get_image_url(f"{title} {topic}")
+        image_url = get_image_url(f"{title} {topic}")
         
         slides.append({
             "title": title,
