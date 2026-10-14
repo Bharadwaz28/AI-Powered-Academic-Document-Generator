@@ -176,7 +176,7 @@ Requirements:
     return "\n\n".join(paragraphs[:2])
 
 
-def generate_chart_data(topic, aspect, content):
+def generate_chart(topic, aspect, content):
     """
     Extract chart data only when the section contains explicit,
     meaningful quantitative information.
