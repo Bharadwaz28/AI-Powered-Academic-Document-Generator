@@ -1,4 +1,3 @@
-
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -159,7 +158,6 @@ def generate_pdf(slides, topic):
             chart_data = slide.get("chart_data")
             image_url = slide.get("image_url")
 
-            # Randomly choose a visual for each section.
             # Use the visual already chosen in app.py (same as the preview).
             saved_visual = slide.get("visual_type")
 
@@ -222,23 +220,7 @@ def generate_pdf(slides, topic):
                 )
                 return True
 
-            # Try the randomly selected visual first.
-            try:
-                if preferred_visual == "chart":
-                    visual_added = add_chart()
-                else:
-                    visual_added = add_image()
-
-            except Exception as exc:
-                print(
-                    f"{preferred_visual.title()} error in section "
-                    f"{i + 1}: {exc}"
-                )
-
-            # If the chosen visual fails, try the other type.
-            if not visual_added:
-                try:
-                                # Try the selected visual first.
+            # Try the selected visual first.
             if preferred_visual:
                 try:
                     if preferred_visual == "chart":
